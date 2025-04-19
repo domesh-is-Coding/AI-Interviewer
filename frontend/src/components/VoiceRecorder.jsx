@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import FileUpload from "./FileUpload";
+import AvatarScene from "./AvatarScene";
+
 
 const VoiceRecorder = () => {
   const [recording, setRecording] = useState(false);
@@ -8,6 +10,8 @@ const VoiceRecorder = () => {
   const [resume, setResume] = useState(null);
   const [jobTitle, setJobTitle] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef(null);
 
 
   useEffect(() => console.log("This is mounted"),[])
@@ -43,6 +47,23 @@ const VoiceRecorder = () => {
     setRecording(true);
   };
 
+  // const stopRecording = () => {
+  //   mediaRecorderRef.current.stop();
+  //   setRecording(false);
+  // };
+
+
+  const playResponseAudio = (url) => {
+    setIsPlaying(true);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+    }
+    audioRef.current = new Audio(url);
+    audioRef.current.onended = () => setIsPlaying(false);
+    audioRef.current.play();
+  };
+
   const stopRecording = () => {
     mediaRecorderRef.current.stop();
     setRecording(false);
@@ -56,18 +77,41 @@ const VoiceRecorder = () => {
   };
 
   return (
-    <div>
+
+    <div className="min-h-screen bg-gray-50">
+       <div className="mb-8">
+            <AvatarScene isSpeaking={recording || isPlaying} />
+          </div>
       {contextAdded ? (
-        <div className="p-4">
-          <button
-            onClick={recording ? stopRecording : startRecording}
-            className="bg-blue-600 text-white px-4 py-2 rounded"
-          >
-            {recording ? "Stop Recording" : "Start Recording"}
-          </button>
-          <div className="mt-4">
-            <p className="text-lg">AI Response:</p>
-            <p>{response?.reply}</p>
+        <div className="container mx-auto px-4 py-8 flex flex-col items-center">
+          {/* Avatar Section */}
+          <div className="mb-8">
+            <AvatarScene isSpeaking={recording || isPlaying} />
+          </div>
+          
+          {/* Controls */}
+          <div className="flex flex-col items-center space-y-6 w-full max-w-md">
+            <button
+              onClick={recording ? stopRecording : startRecording}
+              className={`w-full py-3 px-6 rounded-lg text-white font-medium transition-colors ${
+                recording ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'
+              }`}
+            >
+              {recording ? (
+                <span className="flex items-center justify-center">
+                  <span className="w-3 h-3 bg-white rounded-full mr-2 animate-pulse"></span>
+                  Stop Recording
+                </span>
+              ) : 'Start Recording'}
+            </button>
+
+            {/* Response */}
+            {response && (
+              <div className="w-full bg-white p-4 rounded-lg shadow">
+                <h3 className="text-lg font-semibold text-gray-800 mb-2">Interviewer Response</h3>
+                <p className="text-gray-600">{response.reply}</p>
+              </div>
+            )}
           </div>
         </div>
       ) : (

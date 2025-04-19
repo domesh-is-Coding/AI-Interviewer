@@ -33,6 +33,7 @@ const FileUpload = ({ onSubmit }) => {
       } else {
         // Better error message from the server if available
         alert(data.message || "❌ Failed to setup interview context.");
+        setLoading(false)
       }
     } catch (err) {
       console.error(err);
