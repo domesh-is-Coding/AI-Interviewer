@@ -4,8 +4,18 @@ import sys
 from transformers import DistilBertTokenizerFast, DistilBertForSequenceClassification
 import torch
 
-resume = sys.argv[1]
-job = sys.argv[2]
+# resume = sys.argv[1]
+# job = sys.argv[2]
+resume_file = sys.argv[1]
+job_file = sys.argv[2]
+
+
+with open(resume_file, "r", encoding="utf-8") as f:
+    resume = f.read()
+
+with open(job_file, "r", encoding="utf-8") as f:
+    job = f.read()
+
 
 tokenizer = DistilBertTokenizerFast.from_pretrained("backend/ml/similarity_model")
 model = DistilBertForSequenceClassification.from_pretrained("backend/ml/similarity_model")

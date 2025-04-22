@@ -6,16 +6,19 @@ import { readFileSync } from "fs";
 import path from "path";
 import { promisify } from "util";
 import * as dotenv from "dotenv";
+// import pdfParse from "pdf-parse";
 import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
 
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai";
-import { ChatPromptTemplate, MessagesPlaceholder } from "@langchain/core/prompts";
+import { ChatPromptTemplate } from "@langchain/core/prompts";
+// import { MemoryVectorStore } from "@langchain/community/vectorstores/memory";
 import { MemoryVectorStore } from "langchain/vectorstores/memory";
 import { RecursiveCharacterTextSplitter } from "@langchain/textsplitters";
+// import { OpenAIEmbeddings } from "@langchain/openai";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { TaskType } from "@google/generative-ai";
 import { StringOutputParser } from "@langchain/core/output_parsers";
-import { AIMessage, HumanMessage } from "@langchain/core/messages";
+import { RunnableSequence } from "@langchain/core/runnables";
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname);
 
@@ -24,53 +27,17 @@ dotenv.config();
 const app = express();
 const port = 5000;
 const upload = multer({ dest: "uploads/" });
-
-// Initialize vector store
 const vectorStore = await MemoryVectorStore.fromTexts(
   [],
   [],
   new GoogleGenerativeAIEmbeddings({
-    model: "text-embedding-004",
+    model: "text-embedding-004", // 768 dimensions
     taskType: TaskType.RETRIEVAL_DOCUMENT,
+    // title: "Document title",
   })
 );
 
-// Chat History Manager Class
-class ChatHistoryManager {
-  constructor() {
-    this.history = [];
-    this.maxHistoryLength = 10; // Keep last 10 exchanges
-  }
-
-  addHumanMessage(content) {
-    this.history.push(new HumanMessage(content));
-    this._trimHistory();
-  }
-
-  addAIMessage(content) {
-    this.history.push(new AIMessage(content));
-    this._trimHistory();
-  }
-
-  getHistory() {
-    return [...this.history];
-  }
-
-  clear() {
-    this.history = [];
-  }
-
-  _trimHistory() {
-    if (this.history.length > this.maxHistoryLength) {
-      const toRemove = this.history.length - this.maxHistoryLength;
-      this.history.splice(0, toRemove);
-    }
-  }
-}
-
-const chatHistory = new ChatHistoryManager();
-
-// Global error handler middleware
+// Global Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
   res.status(500).json({ error: "Something went wrong!" });
@@ -80,12 +47,14 @@ app.use(cors());
 app.use(express.json());
 app.use("/audio", express.static("uploads/output"));
 
-// Extract text from PDF using PDF.js
+// Add better PDF text extraction with error handling
 const extractTextFromPDF = async (pdfPath) => {
   try {
+    // const data = new Uint8Array(readFileSync(pdfPath));
     const data = new Uint8Array(fs.readFileSync(pdfPath));
     const loadingTask = pdfjsLib.getDocument({
       data,
+      // Enable more PDF.js features
       cMapUrl: path.join(__dirname, "../node_modules/pdfjs-dist/cmaps") + "/",
       cMapPacked: true,
     });
@@ -112,13 +81,22 @@ const extractTextFromPDF = async (pdfPath) => {
   }
 };
 
-// Setup endpoint
+// STEP 1: Store Resume, Job Title & Description in Vector Store
 app.post("/api/setup", upload.single("resume"), async (req, res) => {
   try {
     const { jobTitle, jobDescription } = req.body;
     const resumePath = req.file.path;
+    // console.log(path.resolve(__dirname, resumePath);)
+
+    // const buffer = fs.readFileSync(resumePath);
+    // const pdfText = await pdfParse(buffer);
+    // const buffer = fs.readFileSync(resumePath); // 🟢 this is inside the API route
+    // const pdfText = await pdfParse(buffer);     // 🟢 safe
+
+    // const resumeContent = pdfText.text;
 
     const resumeContent = await extractTextFromPDF(resumePath);
+
     console.log("resume text: ", resumeContent);
 
     const fullContext = `
@@ -131,13 +109,10 @@ app.post("/api/setup", upload.single("resume"), async (req, res) => {
       chunkSize: 1000,
       chunkOverlap: 200,
     });
-
     const docs = await splitter.createDocuments([fullContext]);
+
     await vectorStore.addDocuments(docs);
     console.log("✅ Context embedded and stored in vector DB.");
-
-    // Clear previous conversation history when setting up new interview
-    chatHistory.clear();
 
     return res.json({ success: true });
   } catch (err) {
@@ -146,7 +121,7 @@ app.post("/api/setup", upload.single("resume"), async (req, res) => {
   }
 });
 
-// Interview endpoint
+// STEP 2: Handle Voice Input (transcribed already) and Respond using Gemini + context
 import { exec } from "child_process";
 const execAsync = promisify(exec);
 
@@ -156,108 +131,83 @@ app.post("/api/interview", upload.single("audio"), async (req, res) => {
   const transcriptPath = `uploads/${req.file.filename}.txt`;
 
   try {
-    // Convert uploaded audio to WAV format
+    // Convert audio to WAV
     await execAsync(
       `ffmpeg -y -i ${inputPath} -ar 16000 -ac 1 -c:a pcm_s16le ${wavPath}`
     );
 
-    // Transcribe audio using Whisper CLI
+    // Transcribe with Whisper CLI
     await execAsync(
       `whisper "${wavPath}" --model tiny.en --language en --fp16 False --output_format txt --output_dir uploads`
     );
 
-    if (!fs.existsSync(transcriptPath)) throw new Error("Transcript not found.");
-
+    if (!fs.existsSync(transcriptPath))
+      throw new Error("Transcript not found.");
     const transcript = fs.readFileSync(transcriptPath, "utf-8").trim();
     console.log("📝 Transcribed:", transcript);
 
-    // Retrieve relevant context from vector store
+    // Retrieve context from vector store
     const relevantDocs = await vectorStore.similaritySearch(transcript, 3);
     const contextText = relevantDocs.map((doc) => doc.pageContent).join("\n\n");
 
-    // Prepare Gemini model chain with history
+    // Gemini chain
     const model = new ChatGoogleGenerativeAI({
       model: "gemini-1.5-pro",
       temperature: 0.7,
+      //   apiKey: process.env.GEMINI_API_KEY,
     });
 
     const prompt = ChatPromptTemplate.fromMessages([
       [
         "system",
-        `You are Neerja, a professional and experienced job interviewer conducting a mock interview for a specific role. Your tone is conversational, encouraging, and insightful.
-      
-      Always respond as if you're in a real-time, spoken conversation — avoid sounding like you're writing an essay. Focus only on the job interview, and ignore unrelated or general questions (like technical definitions or trivia).
-      
-      You have access to the following context to guide your questions and evaluate the candidate:
-      - Job Title and Description
-      - Candidate's Resume
-      
-      Use this context to:
-      - Ask relevant behavioral, situational, and technical questions.
-      - Follow up based on the candidate’s previous answers.
-      - Avoid repeating yourself or giving unrelated information.
-      
-      Never explain concepts like a teacher or give definitions unless the candidate explicitly asks for clarification.
-      
-      If a candidate asks something outside the interview scope, politely steer the conversation back on track.
-      
-      Context:\n${contextText}`
-      ]
-      ,
-      ...chatHistory.getHistory(),
+        `You are Brian, a professional interviewer. Use the resume and job description context when crafting your response. Context:\n${contextText}`,
+      ],
       ["human", transcript],
     ]);
 
     const parser = new StringOutputParser();
+
+    // const chain = RunnableSequence.from([prompt, model]);
     const chain = prompt.pipe(model).pipe(parser);
-    const result = await chain.invoke({
-      chat_history: chatHistory.getHistory()
-    });
+    const result = await chain.invoke({});
 
-    console.log("🤖 Assistant Response:", result);
+    console.log({ result });
 
-    // Update history with both user and assistant messages
-    chatHistory.addHumanMessage(transcript);
-    chatHistory.addAIMessage(result);
-
-    // Prepare text for TTS
-    const text = result?.replace(/["$`\\]/g, "");
-    console.log({ text }, typeof text);
-
+    // TTS (Optional)
+    // const outputAudioPath = `uploads/output/${req.file.filename}_response.wav`;
+    const text = result?.replace(/["$`\\']/g, ""); // Clean the text
+    console.log({text}, typeof text)
     const outputAudioPath = `uploads/output/${req.file.filename}_response.wav`;
     fs.mkdirSync("uploads/output", { recursive: true });
+    // await execAsync(`python tts_edge.py "${result.content.replace(/["$`\\']/g, '')}" "${outputAudioPath}"`);
+    // await execAsync(`python tts_edge.py "${result.replace(/["$`\\']/g, '')}" "${outputAudioPath}"`);
+    const escapedText = `"${text.replace(/"/g, '\\"')}"`; // Escape double quotes in text
+    const escapedOutputPath = `"${outputAudioPath.replace(/"/g, '\\"')}"`; // Escape double quotes in file path
 
-    // Write cleaned text to temp file for TTS
+    // Run the Python script with the escaped arguments
+    // await execAsync(`python tts_edge.py ${escapedText} ${escapedOutputPath}`);
+    // await execAsync(`python tts_edge.py ${result} ${escapedOutputPath}`);
     const tempTextFile = `uploads/${req.file.filename}_temp.txt`;
     fs.writeFileSync(tempTextFile, text);
 
-    // Call Python TTS script
     await execAsync(`python tts_edge.py "${tempTextFile}" "${outputAudioPath}"`);
-    fs.unlinkSync(tempTextFile); // Remove temp file
-    
-    // Respond with both text and generated audio URL
-    return res.json({
-      reply: result,
+    fs.unlinkSync(tempTextFile); // Cleanup
+
+
+    res.json({
+      reply: result.content,
       audioUrl: `/audio/${req.file.filename}_response.wav`,
     });
   } catch (err) {
     console.error("❌ Interview Error:", err);
     res.status(500).json({ error: "Something went wrong." });
   } finally {
-    // Clean up temp files
     [inputPath, wavPath, transcriptPath].forEach((f) => {
       if (fs.existsSync(f)) fs.unlinkSync(f);
     });
   }
 });
 
-// Clear history endpoint
-app.post("/api/clear-history", (req, res) => {
-  chatHistory.clear();
-  res.json({ success: true, message: "Conversation history cleared" });
-});
-
-// Start server
 app.listen(port, () => {
   console.log(`✅ Server running on http://localhost:${port}`);
 });

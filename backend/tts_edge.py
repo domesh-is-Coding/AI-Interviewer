@@ -20,7 +20,7 @@ except Exception as e:
 
 async def generate():
     try:
-        tts = edge_tts.Communicate(text, voice="en-US-AriaNeural")
+        tts = edge_tts.Communicate(text, voice="en-IN-NeerjaExpressiveNeural")
         await tts.save(output)
         print(f"TTS successfully saved to {output}")
     except Exception as e:
