@@ -24,98 +24,34 @@
 //   }
     
 
-
-
 import { useEffect, useRef } from "react";
 import React from "react";
-
 const TalkingAvatar = (props) => {
-  const { isSpeaking, audioContext, audioStream } = props;
   const mouthRef = useRef(null);
-  const analyserRef = useRef(null);
-  const dataArrayRef = useRef(null);
-  const animationFrameRef = useRef(null);
-
+  const {isSpeaking } = props;
   useEffect(() => {
-    if (!isSpeaking || !audioContext || !audioStream) {
-      // Fall back to simple animation if no audio analysis is available
-      const animateSimple = () => {
-        if (mouthRef.current) {
-          const scale = 1 + Math.sin(Date.now() / 100) * 0.2;
-          mouthRef.current.setAttribute("transform", `scale(1, ${scale})`);
-        }
-        animationFrameRef.current = requestAnimationFrame(animateSimple);
-      };
-
-      if (isSpeaking) {
-        animationFrameRef.current = requestAnimationFrame(animateSimple);
-      } else {
-        cancelAnimationFrame(animationFrameRef.current);
-        if (mouthRef.current) {
-          mouthRef.current.setAttribute("transform", "scale(1, 1)");
-        }
+    let animationFrame;
+    const animate = () => {
+      if (mouthRef.current) {
+        const scale = 1 + Math.sin(Date.now() / 100) * 0.2; // bouncy effect
+        mouthRef.current.setAttribute("transform", `scale(1, ${scale})`);
       }
+      animationFrame = requestAnimationFrame(animate);
+    };
 
-      return () => cancelAnimationFrame(animationFrameRef.current);
+    if (isSpeaking) {
+      animationFrame = requestAnimationFrame(animate);
+    } else {
+      cancelAnimationFrame(animationFrame);
+      if (mouthRef.current) {
+        mouthRef.current.setAttribute("transform", "scale(1, 1)");
+      }
     }
 
-    // Set up audio analysis for lip sync
-    const setupAudioAnalysis = async () => {
-      try {
-        const source = audioContext.createMediaStreamSource(audioStream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        analyserRef.current = analyser;
-        
-        const bufferLength = analyser.frequencyBinCount;
-        dataArrayRef.current = new Uint8Array(bufferLength);
-        
-        source.connect(analyser);
-        
-        const animateLipSync = () => {
-          if (!mouthRef.current || !analyserRef.current || !dataArrayRef.current) {
-            return;
-          }
-          
-          analyserRef.current.getByteFrequencyData(dataArrayRef.current);
-          
-          // Calculate average volume
-          let sum = 0;
-          for (let i = 0; i < dataArrayRef.current.length; i++) {
-            sum += dataArrayRef.current[i];
-          }
-          const average = sum / dataArrayRef.current.length;
-          
-          // Map volume to mouth scale (adjust these values based on your needs)
-          const minScale = 0.8;
-          const maxScale = 1.4;
-          const scale = minScale + (average / 255) * (maxScale - minScale);
-          
-          mouthRef.current.setAttribute("transform", `scale(1, ${scale})`);
-          
-          animationFrameRef.current = requestAnimationFrame(animateLipSync);
-        };
-        
-        animationFrameRef.current = requestAnimationFrame(animateLipSync);
-      } catch (error) {
-        console.error("Error setting up audio analysis:", error);
-      }
-    };
-    
-    setupAudioAnalysis();
-    
-    return () => {
-      cancelAnimationFrame(animationFrameRef.current);
-      if (analyserRef.current) {
-        analyserRef.current.disconnect();
-      }
-    };
-  }, [isSpeaking, audioContext, audioStream]);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isSpeaking]);
 
   return (
-    <>
-   
-
     <svg
     xmlns="http://www.w3.org/2000/svg"
     xmlnsXlink="http://www.w3.org/1999/xlink"
@@ -198,16 +134,10 @@ const TalkingAvatar = (props) => {
               </g>
             </g>
           </g>
-          {/* <path
+          <path
             fillOpacity={0.16}
             d="M120 130c0 4.418 5.373 8 12 8s12-3.582 12-8"
-          /> */}
-          <path
-  ref={mouthRef}  // Add this line
-  fillOpacity={0.16}
-  d="M120 130c0 4.418 5.373 8 12 8s12-3.582 12-8"
-  transform="scale(1, 1)"  // Add this for initial state
-/>
+          />
           <g fillOpacity={0.6} transform="translate(76 90)">
             <circle cx={30} cy={22} r={6} />
             <circle cx={82} cy={22} r={6} />
@@ -292,8 +222,6 @@ const TalkingAvatar = (props) => {
       </g>
     </g>
   </svg>
-    </>
-    
   );
 };
 
