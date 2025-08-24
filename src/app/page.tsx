@@ -1,5 +1,4 @@
 import { Button } from "@/components/ui/button";
-import Link from 'next/link'
 
 export default function Home() {
   return (
@@ -13,7 +12,7 @@ export default function Home() {
           <h1 className="text-xl md:text-4xl lg:text-5xl font-medium">Your Personal AI Interviewer</h1>
           <p className="mt-4">Practice real, job-specific interviews, get instant feedback, and improve with AI-driven insights.</p>
           <section className="mt-4">
-            <Link href="/login"><Button>Get Started Free</Button></Link>
+            <Button>Get Started Free</Button>
             <Button variant="secondary" className="ml-2">Sign In</Button>
           </section>
         </header>
