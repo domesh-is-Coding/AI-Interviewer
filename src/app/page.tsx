@@ -15,8 +15,8 @@ export default function Home() {
           <h1 className="text-xl md:text-4xl lg:text-5xl font-medium">Your Personal AI Interviewer</h1>
           <p className="mt-4">Practice real, job-specific interviews, get instant feedback, and improve with AI-driven insights.</p>
           <section className="mt-4">
-            <Button>Get Started Free</Button>
-            <Button variant="secondary" className="ml-2">Sign In</Button>
+            <Link href="/register"><Button>Get Started Free</Button></Link>
+            <Link href="/login"><Button variant="secondary" className="ml-2">Sign In</Button></Link>
           </section>
         </header>
         <section className="flex justify-center w-full">

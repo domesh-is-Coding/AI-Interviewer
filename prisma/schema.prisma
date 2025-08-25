@@ -1,0 +1,98 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  refresh_token String     @default(uuid()) @unique
+  password  String 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  
+  resume     Resume?
+  interviews Interview[]
+  
+  @@map("users")
+}
+
+model Resume {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  fileName     String
+  fileUrl      String
+  originalText String
+  embedding    Unsupported("vector(1536)")
+  metadata     Json?    // Store additional resume data
+  uploadedAt   DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("resumes")
+}
+
+model Interview {
+  id          String   @id @default(cuid())
+  userId      String
+  title       String
+  objective   Json     // Interview goals, role, etc.
+  status      InterviewStatus @default(DRAFT)
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  
+  user      User @relation(fields: [userId], references: [id])
+  questions Question[]
+  responses Response[]
+  
+  @@map("interviews")
+}
+
+model Question {
+  id          String @id @default(cuid())
+  interviewId String
+  content     String
+  embedding   Unsupported("vector(1536)")
+  order       Int
+  category    String? // "technical", "behavioral", etc.
+  
+  interview Interview @relation(fields: [interviewId], references: [id])
+  responses Response[]
+  
+  @@map("questions")
+}
+
+model Response {
+  id          String   @id @default(cuid())
+  interviewId String
+  questionId  String
+  content     String
+  score       Float?
+  feedback    String?
+  createdAt   DateTime @default(now())
+  
+  interview Interview @relation(fields: [interviewId], references: [id])
+  question  Question  @relation(fields: [questionId], references: [id])
+  
+  @@map("responses")
+}
+
+enum InterviewStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
